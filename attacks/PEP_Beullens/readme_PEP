@@ -1,0 +1,20 @@
+To test Beullens' attack on PEP, first use
+
+load('pep_find_codewords.sage')
+
+to prepare the lists for the attack.
+Then, use
+
+load('test_permutation_recovery.sage')
+
+to use the produced lists for the attack.
+
+Parameters to be considered for each simulation are
+
+- n : code length
+- k : code dimension
+- q : finite field size
+- w _ codewords weight
+- L : number of codewords from each code
+- max_num_calls : max number of successful ISD calls. There is no guarantee that the considered codes have at least L codewords with weight w, so we use max_num_calls as an exit strategy for the codewords finding procedure;
+- test_id_max : max number of generated codes; each is employed as a seed to generate the code, starting from seed 0.

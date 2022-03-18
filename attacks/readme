@@ -1,0 +1,5 @@
+The folder PEP_Beullens contains the scripts to simulate Beullens' attack to PEP.
+The folder LEP_Beullens contains the scripts to simulate Beullens' attack to LEP.
+The folder LEP contains the scripts to simulate the new attack using pairs of low weight codewords,
+and the scripts to get the cost of attacks.
+
