@@ -30,24 +30,38 @@
 
 void LESS_keygen(prikey_t * SK,
                  pubkey_t * PK){
-    /* the first monomial matrix is an identity */
-    monomial_mat_id(&SK->private_Q[0]);
-    monomial_mat_id(&SK->private_Q_inv[0]);
+    generator_mat_t tmp_full_G;
+    uint8_t is_pivot_column[N];
+    /* Find a full rank G: this can be performed only once if
+     * multikey attacks are not an issue. */
     do {
-        generator_rnd(&PK->Full_G);
-        memcpy(&PK->SF_G[0], &PK->Full_G, sizeof(generator_mat_t) );
-    } while ( generator_gausselim(&PK->SF_G[0]) == 0);
-
+        memset(is_pivot_column,0,sizeof(is_pivot_column));
+        generator_rnd(&tmp_full_G);
+    } while ( generator_gausselim(&tmp_full_G,is_pivot_column) == 0);
+    
+    /* the first monomial matrix is an identity */
+    monomial_mat_id(&SK->private_Q_inv[0]);
+    generator_rref_compact(&PK->SF_G_C[0],&tmp_full_G,is_pivot_column);
+    
+    generator_rref_expand(&tmp_full_G,&PK->SF_G_C[0]);
     for(int i = 1; i < NUM_KEYPAIRS; i++){
-        do {
-           monomial_mat_rnd(&SK->private_Q[i]);
-           generator_monomial_mul(&PK->SF_G[i],
-                                  &PK->Full_G,
-                                  &SK->private_Q[i]);
-        } while ( generator_gausselim(&PK->SF_G[i]) == 0);
-        monomial_mat_inv(&SK->private_Q_inv[i], &SK->private_Q[i]);
+        monomial_t private_Q;
+        generator_mat_t result_G;
+        
+        monomial_mat_rnd(&private_Q);
+        generator_monomial_mul(&result_G,
+                               &tmp_full_G,
+                               &private_Q);
+        memset(is_pivot_column,0,sizeof(is_pivot_column));
+        int rref_ok = generator_gausselim(&result_G,is_pivot_column);
+        assert(rref_ok != 0);
+        generator_rref_compact(&PK->SF_G_C[i],
+                             &result_G,
+                             is_pivot_column);       
+        monomial_mat_inv(&SK->private_Q_inv[i], &private_Q);
     }
 }
+
 
 void LESS_sign(const prikey_t * SK,
               const pubkey_t * PK,
@@ -56,24 +70,39 @@ void LESS_sign(const prikey_t * SK,
               sig_t * sig) {
     monomial_t Q_tilde[T];
     generator_mat_t G_tilde[T];
+    generator_mat_t tmp_full_G;
+    uint8_t is_pivot_column[N];
+
+    generator_rref_expand(&tmp_full_G,&PK->SF_G_C[0]);  
     for(int i = 0; i < T; i++){
-        do {
            monomial_mat_rnd(&Q_tilde[i]);
            generator_monomial_mul(&G_tilde[i],
-                                  &PK->Full_G,
+                                  &tmp_full_G,
                                   &Q_tilde[i]);
-        } while (generator_gausselim(&G_tilde[i]) == 0);
+         int rref_ok =  generator_gausselim(&G_tilde[i],is_pivot_column);
+         assert(rref_ok != 0);
     }
 
-   hash(sig->digest, m, mlen, G_tilde);
+    hash(sig->digest, m, mlen, G_tilde);
 
-   uint8_t parsed_digest[PARSED_DIGEST_LEN] = {0};
-   parse_digest(parsed_digest,sig->digest);
-   for(int i = 0; i < T; i++){
-      monomial_mat_mul(&sig->mu[i],
+    uint8_t parsed_digest[PARSED_DIGEST_LEN] = {0};
+    parse_digest(parsed_digest,sig->digest);
+
+    for(int i = 0; i < T; i++){
+       monomial_mat_mul(&sig->mu[i],
                        &SK->private_Q_inv[parsed_digest[i]],
                        &Q_tilde[i]);
-   }
+    }
+}
+
+int timing_safe_memcmp(const unsigned char* a, 
+                       const unsigned char* b, 
+                       unsigned int bytelen){
+    int are_different = 0;
+    for (int i =0; i< bytelen; i++){
+        are_different |= (a[i] != b[i]);
+    }
+    return are_different;
 }
 
 int LESS_verify(const pubkey_t * const PK,
@@ -81,21 +110,26 @@ int LESS_verify(const pubkey_t * const PK,
                 const uint64_t mlen,
                 const sig_t * const sig){
     uint8_t parsed_digest[PARSED_DIGEST_LEN] = {0};
-    generator_mat_t G_hat[T];
-
+    generator_mat_t G_hat[T] = {0};
+    generator_mat_t tmp_full_G;
+    uint8_t is_pivot_column[N];
+    
     parse_digest(parsed_digest,sig->digest);
+    
     for(int i = 0; i < T; i++){
+        generator_rref_expand(&tmp_full_G,&PK->SF_G_C[parsed_digest[i]]);  
+        
         generator_monomial_mul(&G_hat[i],
-                               &PK->SF_G[parsed_digest[i]],
+                               &tmp_full_G,
                                &sig->mu[i]);
         int is_gausselim_ok;
-        is_gausselim_ok = generator_gausselim(&G_hat[i]);
+        is_gausselim_ok = generator_gausselim(&G_hat[i],is_pivot_column);
         assert(is_gausselim_ok);
     }
 
-    uint8_t check_digest[DENSE_HASH_LENGTH] = {0};
-    hash(check_digest,m,mlen,G_hat);
+    uint8_t recomputed_digest[DENSE_HASH_LENGTH] = {0};
+    hash(recomputed_digest,m,mlen,G_hat);
     int does_hash_match = 0;
-    does_hash_match = (memcmp(check_digest,sig->digest,DENSE_HASH_LENGTH) == 0);
+    does_hash_match = (timing_safe_memcmp(recomputed_digest,sig->digest,DENSE_HASH_LENGTH) == 0);
     return does_hash_match;
 }

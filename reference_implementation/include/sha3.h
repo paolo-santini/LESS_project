@@ -25,64 +25,49 @@
 #pragma once
 #if defined(SHA_3_LIBKECCAK)
 #include <libkeccak.a.headers/KeccakHash.h>
-static inline
-void xof_shake_init(Keccak_HashInstance *state, int val)
-{
 
+// %%%%%%%%%%%%%%%%%%%%%%%%%% SHAKE Wrappers %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#define SHAKE_STATE_STRUCT Keccak_HashInstance
+static inline
+void xof_shake_init(SHAKE_STATE_STRUCT *state, int val) {
    if (val == 128)
-      Keccak_HashInitialize_SHAKE128(state);
+    /* will result in a zero-length output for Keccak_HashFinal */
+       Keccak_HashInitialize_SHAKE128(state);
    else
+    /* will result in a zero-length output for Keccak_HashFinal */
       Keccak_HashInitialize_SHAKE256(state);
 }
 
 static inline
-void xof_shake_update(Keccak_HashInstance *state,
+void xof_shake_update(SHAKE_STATE_STRUCT *state,
                       const unsigned char *input,
-                      unsigned int inputByteLen,
-                      unsigned char *output)
-{
-
+                      unsigned int inputByteLen) {
    Keccak_HashUpdate(state,
                      (const BitSequence *) input,
-                     (BitLength) inputByteLen
-                    );
-
+                     (BitLength) inputByteLen*8 );
 }
 
 static inline
-void xof_shake_final_and_extract(Keccak_HashInstance *state,
-                                 unsigned char *output,
-                                 unsigned int outputByteLen)
-{
-   Keccak_HashFinal(state,
-                    (BitSequence *) output
-                   );
-   Keccak_HashSqueeze(state,
-                      (BitSequence *) output,
-                      (BitLength) outputByteLen
-                     );
-
+void xof_shake_final(SHAKE_STATE_STRUCT *state) {
+   Keccak_HashFinal(state, NULL);
 }
 
 static inline
-void xof_shake_extract(Keccak_HashInstance *state,
+void xof_shake_extract(SHAKE_STATE_STRUCT *state,
                        unsigned char *output,
-                       unsigned int outputByteLen)
-{
+                       unsigned int outputByteLen) {
    Keccak_HashSqueeze(state,
                       (BitSequence *) output,
-                      (BitLength) outputByteLen
-                     );
+                      (BitLength) outputByteLen*8 );
 }
 
-// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+// %%%%%%%%%%%%%%%%%%%%%%%%%% SHA-3 Wrappers %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#define SHA3_STATE_STRUCT Keccak_HashInstance
 static inline
-void sha3_256(const unsigned char *input,
-              unsigned int inputByteLen,
-              unsigned char *output)
-{
-   Keccak_HashInstance state;
+void sha3_256(unsigned char *output,
+              const unsigned char *input,
+              unsigned int inputByteLen) {
+   SHA3_STATE_STRUCT state;
    Keccak_HashInitialize(&state, 1088,  512, 256, 0x06);
    Keccak_HashUpdate(&state, input, inputByteLen*8);
    Keccak_HashFinal(&state, output);
@@ -93,11 +78,10 @@ void sha3_256(const unsigned char *input,
   *  The output length is fixed to 48 bytes.
   */
 static inline
-void sha3_384(const unsigned char *input,
-              unsigned int inputByteLen,
-              unsigned char *output)
-{
-   Keccak_HashInstance state;
+void sha3_384(unsigned char *output,
+              const unsigned char *input,
+              unsigned int inputByteLen) {
+   SHA3_STATE_STRUCT state;
    Keccak_HashInitialize(&state, 832,  768, 384, 0x06);
    Keccak_HashUpdate(&state, input, inputByteLen*8);
    Keccak_HashFinal(&state, output);
@@ -108,60 +92,72 @@ void sha3_384(const unsigned char *input,
   *  The output length is fixed to 64 bytes.
   */
 static inline
-void sha3_512(const unsigned char *input,
-              unsigned int inputByteLen,
-              unsigned char *output)
-{
-   Keccak_HashInstance state;
+void sha3_512(unsigned char *output,
+              const unsigned char *input,
+              unsigned int inputByteLen) {
+   SHA3_STATE_STRUCT state;
    Keccak_HashInitialize(&state, 576,  1024, 512, 0x06);
    Keccak_HashUpdate(&state, input, inputByteLen*8);
    Keccak_HashFinal(&state, output);
 }
 
 #else
+#include "fips202.h"
+#include <assert.h>
+#define SHA3_STATE_STRUCT shake256ctx
+#define SHAKE_STATE_STRUCT shake128incctx
 
-void Keccak(      unsigned int rate,
-                  unsigned int capacity,
-                  const unsigned char *input,
-                  unsigned long long int inputByteLen,
-                  unsigned char delimitedSuffix,
-                  unsigned char *output,
-                  unsigned long long int outputByteLen);
-
-/**
-  *  Function to compute SHA3-256 on the input message.
-  *  The output length is fixed to 32 bytes.
-  */
 static inline
-void sha3_256(const unsigned char *input,
-              unsigned int inputByteLen,
-              unsigned char *output)
-{
-   Keccak(1088, 512, input, inputByteLen, 0x06, output, 32);
+void xof_shake_init(SHAKE_STATE_STRUCT *state, int val) {
+   if (val == 128){
+    /* will result in a zero-length output for Keccak_HashFinal */
+       shake128_inc_init(state);
+   } else {
+   /* when other categories are available, add use of SHAKE 256*/
+       assert(0);
+   }
 }
 
-/**
-  *  Function to compute SHA3-384 on the input message.
-  *  The output length is fixed to 48 bytes.
-  */
 static inline
-void sha3_384(const unsigned char *input,
-              unsigned int inputByteLen,
-              unsigned char *output)
-{
-   Keccak(832, 768, input, inputByteLen, 0x06, output, 48);
+void xof_shake_update(SHAKE_STATE_STRUCT *state,
+                      const unsigned char *input,
+                      unsigned int inputByteLen) {
+   shake128_inc_absorb(state, 
+                       (const uint8_t *)input, 
+                       inputByteLen);
 }
 
-/**
-  *  Function to compute SHA3-512 on the input message.
-  *  The output length is fixed to 64 bytes.
-  */
 static inline
-void sha3_512(const unsigned char *input,
-              unsigned int inputByteLen,
-              unsigned char *output)
-{
-   Keccak(576, 1024, input, inputByteLen, 0x06, output, 64);
+void xof_shake_final(SHAKE_STATE_STRUCT *state) {
+    shake128_inc_finalize(state);
 }
+
+static inline
+void xof_shake_extract(SHAKE_STATE_STRUCT *state,
+                       unsigned char *output,
+                       unsigned int outputByteLen) {
+    shake128_inc_squeeze(output, outputByteLen, state);
+}
+
+
+/* includes */
+/* One-stop SHA3-256 shop */
+// void sha3_256(uint8_t *output, const uint8_t *input, size_t inlen);
+/* One-stop SHA3-384 shop */
+// void sha3_384(uint8_t *output, const uint8_t *input, size_t inlen);
+/* One-stop SHA3-512 shop */
+// void sha3_512(uint8_t *output, const uint8_t *input, size_t inlen);
+/* and all the init-absorb-finalize variants for all of them*/
+
+/* Initialize incremental hashing API */
+// void shake128_inc_init(shake128incctx *state);
+/* Absorb more information into the XOF.
+ * Can be called multiple times. */
+// void shake128_inc_absorb(shake128incctx *state, const uint8_t *input, size_t inlen);
+/* Finalize the XOF for squeezing */
+// void shake128_inc_finalize(shake128incctx *state);
+/* Squeeze output out of the sponge.
+ * Supports being called multiple times */
+// void shake128_inc_squeeze(uint8_t *output, size_t outlen, shake128incctx *state);
 
 #endif

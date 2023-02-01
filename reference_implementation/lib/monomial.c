@@ -28,30 +28,39 @@
 #include "utils.h"
 #include <stdio.h>
 #include <assert.h>
-/* Computes res = AB */
-void monomial_mat_mul(monomial_t *res,
-                  const monomial_t * const A,
-                  const monomial_t * const B){
-    for(int i = 0; i < N; i++){
-         res->permutation[i] = B->permutation[A->permutation[i]];
-         res->coefficients[i] = fq_red(
-                                (FQ_DOUBLEPREC) A->coefficients[i] *
-                                (FQ_DOUBLEPREC) B->coefficients[A->permutation[i]] );
-    }
+
+
+
+void monomial_mat_seed_rnd(monomial_seed_t *res){
+   randombytes(res->value, SEED_LENGTH_BYTES);
 }
 
-void monomial_mat_inv(monomial_t *res,
-                      monomial_t *to_invert){
+
+void monomial_mat_seed_expand(monomial_t *res,
+                              const monomial_seed_t * const seed){
+    SHAKE_STATE_STRUCT shake_monomial_state = {0};
+    initialize_prng(&shake_monomial_state,seed->value);
     for(int i = 0; i < N; i++){
-        res->permutation[to_invert->permutation[i]] = i;
-        res->coefficients[to_invert->permutation[i]] = fq_inv(to_invert->coefficients[i]);        
+        res->coefficients[i] = fq_star_rnd_state(&shake_monomial_state);
+        res->permutation[i] = i;
     }
+    /* FY shuffle on the permutation */
+    POSITION_T tmp;
+    for(int i = 0; i < N; i++){
+        POSITION_T rnd = rand_range_n_state(&shake_monomial_state);
+
+        tmp = res->permutation[i];
+        res->permutation[i] = res->permutation[rnd];
+        res->permutation[rnd] = tmp;
+    }    
 }
+
 
 /* samples a random perm matrix */
 void monomial_mat_rnd(monomial_t *res){
     for(int i = 0; i < N; i++){
         res->coefficients[i] = fq_star_rnd();
+        assert(res->coefficients[i] !=0);
         res->permutation[i] = i;
     }
     /* FY shuffle on the permutation */
@@ -65,6 +74,25 @@ void monomial_mat_rnd(monomial_t *res){
     }
 }
 
+void monomial_mat_mul(monomial_t *res,
+                  const monomial_t * const A,
+                  const monomial_t * const B){
+    for(int i = 0; i < N; i++){
+         res->permutation[i] = B->permutation[A->permutation[i]];
+         res->coefficients[i] = fq_red(
+                                (FQ_DOUBLEPREC) A->coefficients[i] *
+                                (FQ_DOUBLEPREC) B->coefficients[A->permutation[i]] );
+    }
+}
+
+void monomial_mat_inv(monomial_t *res,
+                      const monomial_t * const to_invert){
+    for(int i = 0; i < N; i++){
+        res->permutation[to_invert->permutation[i]] = i;
+        res->coefficients[to_invert->permutation[i]] = fq_inv(to_invert->coefficients[i]);        
+    }
+}
+
 /* yields the identity matrix */
 void monomial_mat_id(monomial_t *res){
     for(int i = 0; i < N; i++){
@@ -73,11 +101,52 @@ void monomial_mat_id(monomial_t *res){
     }
 }
 
-/* pretty_print for perm matrices */
-void monomial_mat_pretty_print(const monomial_t *res){
+/* pretty_print for monomial matrices */
+void monomial_mat_pretty_print(const monomial_t * const to_print){
     fprintf(stderr,"perm = [");
     for(int i = 0; i < N-1; i++){
-        fprintf(stderr,"%u, ",res->permutation[i]);
+        fprintf(stderr,"%03u, ",to_print->permutation[i]);
     }
-    fprintf(stderr,"%u ]\n",res->permutation[N-1]);
+    fprintf(stderr,"%03u ]\n",to_print->permutation[N-1]);
+    fprintf(stderr,"coeffs = [");
+    for(int i = 0; i < N-1; i++){
+        fprintf(stderr,"%03u, ",to_print->coefficients[i]);
+    }
+    fprintf(stderr,"%03u ]\n",to_print->coefficients[N-1]);    
 }
+
+void monomial_mat_pretty_print_name(char* name, const monomial_t *to_print){
+    fprintf(stderr,"%s = [",name);
+    for(int i = 0; i < N-1; i++){
+        fprintf(stderr,"%03u, ",to_print->permutation[i]);
+    }
+    fprintf(stderr,"%03u ]\n",to_print->permutation[N-1]);
+    fprintf(stderr,"coeffs = [");
+    for(int i = 0; i < N-1; i++){
+        fprintf(stderr,"%03u, ",to_print->coefficients[i]);
+    }
+    fprintf(stderr,"%03u ]\n",to_print->coefficients[N-1]);    
+}
+
+void monomial_mat_print_exp_name(char* name,const monomial_t *to_print){
+    FQ_ELEM mu[N][N]= {{0}};
+  
+    for(int i = 0; i < N; i++){
+        mu[to_print->permutation[i]][i] = to_print->coefficients[i];
+    }
+    
+    fprintf(stderr,"%s = Mon([",name);
+    for(int i = 0; i < N-1 ; i++ ){
+       fprintf(stderr,"[");
+       for(int j = 0; j < N-1; j++){
+           fprintf(stderr,"%u, ",mu[i][j]);
+       }
+       fprintf(stderr,"%u ],\n",mu[i][N-1]);
+    }
+    fprintf(stderr,"[");
+    for(int j = 0; j < N-1; j++){
+        fprintf(stderr,"%u, ",mu[N-1][j]);
+    }
+    fprintf(stderr,"%u ] ])\n",mu[N-1][N-1]);
+}
+

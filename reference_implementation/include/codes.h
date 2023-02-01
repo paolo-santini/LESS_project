@@ -30,19 +30,36 @@ typedef struct {
 } generator_mat_t;
 
 typedef struct {
-    FQ_ELEM values[K][N-K];
-} sf_generator_mat_t;
+    FQ_ELEM values[K][N-K];   /* values of the non-pivot columns */
+    POSITION_T column_pos[N-K]; /* positions of the non-pivot columns */   
+} rref_generator_mat_t;  
 
 /* multiplies a monomial matrix by a generator matrix */
 void generator_monomial_mul(generator_mat_t *res,
                             const generator_mat_t *G,
                             const monomial_t * const monom);
+void generator_monomial_mul_in_place(generator_mat_t *G,
+                                     const monomial_t * const monom);
 
-/* computes the normal form of the generator matrix with the first k columns as minor
- * returns 1 on success, 0 on failure, computation is done in-place */
-int generator_gausselim(generator_mat_t *res);
+/* Computes the row-reduced echelon form of the generator matrix
+ * returns 1 on success, 0 on failure, computation is done in-place 
+ * Provides the positions of the pivot columns, one-hot encoded in 
+ * is_pivot_column*/
+int generator_gausselim(generator_mat_t *G,
+                        uint8_t is_pivot_column[N]);
+
+/* extracts the last N-K columns from a generator matrix, filling 
+ * in the compact RREF representation*/
+void generator_rref_compact(rref_generator_mat_t* compact,
+                          const generator_mat_t* const full,
+                          const uint8_t is_pivot_column[N] );
+
+/* Expands a compact representation of a generator matrix into full form*/
+void generator_rref_expand(generator_mat_t * full,
+                         const rref_generator_mat_t * const compact);
 
 /* samples a random monomial matrix */
 void generator_rnd(generator_mat_t *res);
 
-void generator_pretty_print(const generator_mat_t * const G);
+void generator_pretty_print_name(char* name, const generator_mat_t * const G);
+void generator_rref_pretty_print_name(char* name, const rref_generator_mat_t * const G);
