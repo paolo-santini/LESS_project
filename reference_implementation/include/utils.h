@@ -28,20 +28,6 @@
 #include "codes.h"
 #include <assert.h>
 
-uint32_t csprng();
-
-static inline
-uint32_t rand_range_n(){
-   const uint32_t mask = ( (uint32_t) 1 << BITS_TO_REPRESENT(N-1)) - 1;
-   uint32_t rnd_value;
-   do {
-      rnd_value = csprng();
-      rnd_value = mask & rnd_value;
-   } while (rnd_value >= N);
-   assert(rnd_value < N);
-   return rnd_value;
-}
-
 void hash( uint8_t digest[DENSE_HASH_LENGTH],
              const char * const m,
              const uint64_t mlen,

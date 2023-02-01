@@ -24,8 +24,8 @@
 
 #pragma once
 #include <stdint.h>
-
-#define LESS_MIN_SIG_SIZE
+#define SEED_LENGTH_BYTES 16
+#define LESS_MIN_TOTAL_SIZE 1
 
 #if defined(LESS_MIN_PUBKEY_SIZE)
 #define LESSF
@@ -62,7 +62,7 @@
 #define FQ_ELEM uint8_t
 #define FQ_DOUBLEPREC uint16_t
 #define FQ_TRIPLEPREC uint32_t
-#define POSITION_T uint32_t
+#define POSITION_T uint8_t
 
 
 #if !defined(LESSF)

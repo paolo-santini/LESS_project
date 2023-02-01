@@ -22,62 +22,22 @@
  *
  **/
 #pragma once
-
-/******  From this point on, the code was supplied by NIST ****************/
-//
-//  Created by Bassham, Lawrence E (Fed) on 8/29/17.
-//  Copyright © 2017 Bassham, Lawrence E (Fed). All rights reserved.
-//
-/******    from NIST  ****************/
-
-#include <stdio.h>
-
-#define RNG_SUCCESS      0
-#define RNG_BAD_MAXLEN  -1
-#define RNG_BAD_OUTBUF  -2
-#define RNG_BAD_REQ_LEN -3
-
-typedef struct {
-   unsigned char   buffer[16];
-   int             buffer_pos;
-   unsigned long   length_remaining;
-   unsigned char   key[32];
-   unsigned char   ctr[16];
-} AES_XOF_struct;
-
-typedef struct {
-   unsigned char   Key[32];
-   unsigned char   Vee[16];
-   int             reseed_counter;
-} AES256_CTR_DRBG_struct;
-
-
-void
-AES256_CTR_DRBG_Update(unsigned char *provided_data,
-                       unsigned char *Key,
-                       unsigned char *Vee);
-
-int
-seedexpander_init(AES_XOF_struct *ctx,
-                  unsigned char *seed,
-                  unsigned char *diversifier,
-                  unsigned long maxlen);
-
-int
-seedexpander(AES_XOF_struct *ctx,
-             unsigned char *x,
-             unsigned long xlen);
-
-void
-randombytes_init(unsigned char *entropy_input,
-                 unsigned char *personalization_string,
-                 int security_strength);
-
-int
-randombytes(unsigned char *x, unsigned long long xlen);
-
-/******  End of NIST supplied code ****************/
-
 #include "sha3.h"
 
-void initialize_pseudo_random_generator_seed(int isSeedFixed, char *seed);
+extern SHAKE_STATE_STRUCT platform_csprng_state;
+
+void initialize_prng(SHAKE_STATE_STRUCT *shake_state,
+                              const unsigned char * seed);
+
+static inline
+void randombytes(unsigned char *x, 
+                 unsigned long long xlen) {
+    xof_shake_extract(&platform_csprng_state,x,xlen);  
+}
+
+static inline
+void randombytes_state(unsigned char *x, 
+                 unsigned long long xlen, 
+                 SHAKE_STATE_STRUCT *shake_state) {
+    xof_shake_extract(shake_state,x,xlen);  
+}

@@ -30,12 +30,10 @@
 
 /* in memory key format, the first matrix for the prikey is an identity */
 typedef struct {
-    generator_mat_t SF_G[NUM_KEYPAIRS];
-    generator_mat_t Full_G;
+    rref_generator_mat_t SF_G_C[NUM_KEYPAIRS];
 } pubkey_t;
 
 typedef struct {
-    monomial_t private_Q[NUM_KEYPAIRS];
     monomial_t private_Q_inv[NUM_KEYPAIRS];
 } prikey_t;
 

@@ -29,12 +29,6 @@
 #include "utils.h"
 #include <string.h>
 
-uint32_t csprng(){
-    uint32_t x;
-    randombytes((unsigned char*) &x, sizeof(uint32_t));
-    return x;
-}
-
 void hash( uint8_t digest[DENSE_HASH_LENGTH],
              const char * const m,
              const uint64_t mlen,
@@ -42,36 +36,50 @@ void hash( uint8_t digest[DENSE_HASH_LENGTH],
     unsigned char message_buffer[ mlen + T*sizeof(generator_mat_t) ];
     memcpy(message_buffer, G_tilde, T*sizeof(generator_mat_t) );
     memcpy(message_buffer + T*sizeof(generator_mat_t), m, mlen);
-    sha3_256(message_buffer, mlen+T*sizeof(generator_mat_t), digest);
+    sha3_256(digest,message_buffer, mlen+T*sizeof(generator_mat_t));
 }
 
 /* parses a digest expanding it according to the LESS variant requirements
  * it either expands bitwise the digest or generates a fixed-weight string
- * ell bit sized elements */
+ * ELL bit sized elements. Each one of the W non-null ELL bits element may have
+ * any value. Currently ELL+log2(N+1) < 16, so extracting 16 b at a time is ok.*/
+
+/* bitmask to rejection-sample numbers modulo PARSED_DIGEST_LEN, to place
+ * the fixed number of ones */
+#include <stdio.h>
+#define MAX_KEYPAIR_INDEX (NUM_KEYPAIRS-1)
+#define KEYPAIR_INDEX_MASK ( ((uint16_t)1 << BITS_TO_REPRESENT(MAX_KEYPAIR_INDEX)) -1 )
+
+/* bitmask for rejection sampling of the position */
+#define  POSITION_MASK (( (POSITION_T)1 << BITS_TO_REPRESENT(PARSED_DIGEST_LEN))-1)
+
 void parse_digest( uint8_t parsed_digest[PARSED_DIGEST_LEN],
                    const uint8_t digest[DENSE_HASH_LENGTH]){
 #if defined(LESSF)
-    AES_XOF_struct parser_ctx;
-    unsigned char empty_diversifier[8] = {0};
-    seedexpander_init(&parser_ctx,
-                      (unsigned char*) digest,
-                      empty_diversifier,
-                      (unsigned int) (1<<20));
-    int placed_elements = 0;
+    SHAKE_STATE_STRUCT shake_state;
+    xof_shake_init(&shake_state, 128);
+    xof_shake_update(&shake_state,
+                     (const unsigned char*) digest,
+                      DENSE_HASH_LENGTH);
     uint16_t rnd_buf;
+    xof_shake_final(&shake_state);
+
+    int placed_elements = 0;
     while (placed_elements < W){
         uint8_t value;
         POSITION_T pos;
         do {
-            seedexpander(&parser_ctx, (unsigned char *) &rnd_buf, sizeof(uint16_t));
-            value = rnd_buf & ( ( (uint16_t)1 << BITS_TO_REPRESENT(NUM_KEYPAIRS-1) )-1);
-            pos   = rnd_buf >> BITS_TO_REPRESENT(NUM_KEYPAIRS-1) ;
-            pos = pos & (((POSITION_T)1 << BITS_TO_REPRESENT(PARSED_DIGEST_LEN-1))-1);
-        } while ( (value >= NUM_KEYPAIRS) ||
-                  (pos  >= PARSED_DIGEST_LEN) ||
-                  (parsed_digest[pos] != 0) );
+            xof_shake_extract(&shake_state,
+                              (unsigned char *) &rnd_buf,
+                              sizeof(uint16_t));
+            value = rnd_buf & ( ((uint16_t)1 << BITS_TO_REPRESENT(NUM_KEYPAIRS-1)) -1 );
+            pos   = rnd_buf >> BITS_TO_REPRESENT(MAX_KEYPAIR_INDEX) ;
+            pos   = pos & POSITION_MASK;
+        } while ( (value >= NUM_KEYPAIRS) || /* for non-power-of-two keypair numbers */
+                  (pos  >= PARSED_DIGEST_LEN) || /* rejection sampling */
+                  (parsed_digest[pos] != 0) ); /* skip elements already placed */
         parsed_digest[pos] = value;
-        placed_elements++;
+        placed_elements +=(value !=0);
     }
 #else
 #error LESS with variable length digest is not supported
